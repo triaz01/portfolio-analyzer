@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-def run_monte_carlo(initial_value, cagr, volatility, years=10, simulations=500):
+def run_monte_carlo(initial_value, cagr, volatility, years=10, simulations=500, annual_withdrawal=0):
     """
-    Run Monte Carlo simulation using geometric Brownian motion to model future portfolio wealth.
+    Run Monte Carlo simulation using path-dependent geometric Brownian motion with withdrawals.
     
     Parameters:
     - initial_value: Starting portfolio value
@@ -11,32 +11,43 @@ def run_monte_carlo(initial_value, cagr, volatility, years=10, simulations=500):
     - volatility: Annualized volatility
     - years: Number of years to simulate
     - simulations: Number of simulation paths to run
+    - annual_withdrawal: Fixed dollar amount withdrawn every year
     
     Returns:
     - DataFrame with 10th, 50th, and 90th percentile projections indexed by year
     """
-    # Trading days per year
-    days = years * 252
+    # Calculate fundamental daily variables
+    days = int(years * 252)
+    daily_withdrawal = annual_withdrawal / 252
+    drift = (cagr - 0.5 * volatility**2) / 252
+    shock = volatility / np.sqrt(252)
     
-    # Calculate daily parameters
-    daily_drift = cagr / 252
-    daily_vol = volatility / np.sqrt(252)
+    # Generate the entire matrix of random daily returns for all simulations at once
+    Z = np.random.normal(0, 1, (days, simulations))
+    daily_returns = np.exp(drift + shock * Z)
     
-    # Generate random shocks for all simulations
-    shock_matrix = np.random.normal(daily_drift, daily_vol, (days, simulations))
+    # Initialize a portfolio values matrix with zeros
+    portfolio_values = np.zeros((days, simulations))
     
-    # Calculate cumulative returns using geometric Brownian motion
-    price_paths = initial_value * np.exp(np.cumsum(shock_matrix, axis=0))
+    # Set the starting value
+    portfolio_values[0] = initial_value
     
-    # Extract percentiles for each day
-    percentile_10 = np.percentile(price_paths, 10, axis=1)
-    percentile_50 = np.percentile(price_paths, 50, axis=1)
-    percentile_90 = np.percentile(price_paths, 90, axis=1)
+    # The Path-Dependent Loop: Create a for loop from i = 1 to days
+    for i in range(1, days):
+        # Apply the return and subtract the withdrawal
+        new_value = portfolio_values[i-1] * daily_returns[i] - daily_withdrawal
+        
+        # CRITICAL: Floor the value at zero (a portfolio cannot have a negative balance)
+        portfolio_values[i] = np.maximum(0, new_value)
     
-    # Create year index (fractional years)
+    # Extract the 10th, 50th, and 90th percentile arrays from portfolio_values across axis 1
+    percentile_10 = np.percentile(portfolio_values, 10, axis=1)
+    percentile_50 = np.percentile(portfolio_values, 50, axis=1)
+    percentile_90 = np.percentile(portfolio_values, 90, axis=1)
+    
+    # Return the Pandas DataFrame with 'Year' as the index (fractional years) and the three percentile columns
     year_index = np.linspace(0, years, days)
     
-    # Build DataFrame
     df = pd.DataFrame({
         '10th Percentile (Bear Market)': percentile_10,
         '50th Percentile (Expected)': percentile_50,

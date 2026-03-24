@@ -10,6 +10,10 @@ from pdf_generator import generate_pdf_report
 
 st.set_page_config(page_title='Portfolio Analyzer', layout='wide', initial_sidebar_state='collapsed')
 
+# Initialize tutorial session state
+if 'tutorial_seen' not in st.session_state:
+    st.session_state.tutorial_seen = False
+
 # Top Navigation Bar
 nav1, nav2, spacer, nav3 = st.columns([1.5, 1.5, 4, 2])
 
@@ -64,19 +68,20 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* Pastel buttons */
+    /* Dark blue buttons */
     .stButton>button {
         border-radius: 20px;
         font-weight: 500;
         padding: 0.5rem 1.5rem;
-        background: #e2e8f0;
-        color: #4a5568;
-        border: none;
+        background: #1e3a8a;
+        color: #ffffff;
+        border: 1px solid #1e3a8a;
         transition: all 0.3s ease;
     }
     
     .stButton>button:hover {
-        background: #cbd5e1;
+        background: #2563eb;
+        border-color: #2563eb;
         transform: translateY(-1px);
     }
     
@@ -100,6 +105,90 @@ st.markdown("""
     header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
+
+# Onboarding Tutorial - Show only if not seen
+if not st.session_state.tutorial_seen:
+    with st.container(border=True):
+        # Custom CSS for tutorial container
+        st.markdown("""
+        <style>
+        .tutorial-container {
+            background-color: #ffffff;
+            border: 2px solid #1e3a8a;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .tutorial-header {
+            text-align: center;
+            color: #1e3a8a;
+            margin-bottom: 2rem;
+        }
+        .tutorial-step {
+            text-align: center;
+            padding: 1rem;
+        }
+        .tutorial-step-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .tutorial-step-title {
+            font-weight: 600;
+            color: #1e3a8a;
+            margin-bottom: 0.5rem;
+        }
+        .tutorial-step-desc {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="tutorial-container">', unsafe_allow_html=True)
+        
+        # Welcome header
+        st.markdown('<h2 class="tutorial-header">Welcome to the Portfolio Analyzer</h2>', unsafe_allow_html=True)
+        
+        # Three steps in columns
+        step1, step2, step3 = st.columns(3)
+        
+        with step1:
+            st.markdown("""
+            <div class="tutorial-step">
+                <div class="tutorial-step-icon">📊</div>
+                <div class="tutorial-step-title">Step 1: Input Holdings</div>
+                <div class="tutorial-step-desc">Add your portfolio tickers and shares either by pasting text or uploading a CSV file.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with step2:
+            st.markdown("""
+            <div class="tutorial-step">
+                <div class="tutorial-step-icon">📈</div>
+                <div class="tutorial-step-title">Step 2: Analyze Risk</div>
+                <div class="tutorial-step-desc">Review historical performance, volatility, correlation metrics, and IPS alignment.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with step3:
+            st.markdown("""
+            <div class="tutorial-step">
+                <div class="tutorial-step-icon">🔮</div>
+                <div class="tutorial-step-title">Step 3: Stress Test</div>
+                <div class="tutorial-step-desc">Run Monte Carlo simulations with withdrawals and export your analysis as a PDF.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Centered Get Started button
+        st.markdown('<br><br>', unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button('Get Started', use_container_width=True, type='primary'):
+                st.session_state.tutorial_seen = True
+                st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Initialize session state
 if 'app_step' not in st.session_state:
@@ -383,6 +472,35 @@ elif st.session_state.app_step == 'analysis':
                     # Clear invalid chart from session state
                     st.session_state.current_chart = None
         
+        # Risk Analysis Card - Correlation Heatmap
+        if metrics.get('correlation_matrix') is not None and not metrics['correlation_matrix'].empty:
+            with st.container(border=True):
+                st.subheader('🔗 Asset Correlation Analysis')
+                
+                # Calculate correlation safely
+                corr_matrix = metrics['correlation_matrix']
+                
+                # Build the visual heatmap
+                fig_corr = px.imshow(
+                    corr_matrix,
+                    text_auto='.2f',
+                    color_continuous_scale='Blues',
+                    aspect='auto',
+                )
+                
+                # Update layout to match our UI
+                fig_corr.update_layout(
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                
+                # Render the chart in Streamlit
+                st.plotly_chart(fig_corr, use_container_width=True)
+                
+                # Add interpretation caption
+                st.caption("📊 Correlation values range from -1 to 1. Values closer to 1 indicate assets that move together, while values closer to -1 indicate assets that move in opposite directions. Lower correlations generally provide better diversification.")
+        
         # IPS Alignment Card
         if st.session_state.ips_targets:
             with st.container(border=True):
@@ -464,8 +582,16 @@ elif st.session_state.app_step == 'analysis':
         with st.container(border=True):
             st.subheader('🎲 Monte Carlo Wealth Simulation')
             
-            # Interactive slider for simulation horizon
-            sim_years = st.slider('Projection Horizon (Years)', min_value=5, max_value=30, value=10, step=1)
+            # Two columns for inputs
+            mc_col1, mc_col2 = st.columns(2)
+            
+            # In mc_col1, keep the horizon slider
+            with mc_col1:
+                sim_years = st.slider('Projection Horizon (Years)', min_value=5, max_value=30, value=10, step=1)
+            
+            # In mc_col2, add a number input for withdrawals
+            with mc_col2:
+                annual_withdrawal = st.number_input('Annual Withdrawal ($)', min_value=0, value=0, step=1000, help='Fixed dollar amount withdrawn every year.')
             
             # Run Monte Carlo simulation
             mc_results = run_monte_carlo(
@@ -473,7 +599,8 @@ elif st.session_state.app_step == 'analysis':
                 cagr=metrics['annualized_return'],
                 volatility=metrics['annual_volatility'],
                 years=sim_years,
-                simulations=500
+                simulations=500,
+                annual_withdrawal=annual_withdrawal
             )
             
             # Create Plotly chart
@@ -514,7 +641,7 @@ elif st.session_state.app_step == 'analysis':
             )
             
             mc_fig.update_xaxes(showgrid=False, tickfont=dict(color='#4a5568'))
-            mc_fig.update_yaxes(showgrid=False, tickformat="$,.0f", tickfont=dict(color='#4a5568'))
+            mc_fig.update_yaxes(showgrid=False, tickformat="$,.0f", tickfont=dict(color='#4a5568'), rangemode='tozero')
             
             # Store Monte Carlo figure in session state for PDF generation
             st.session_state.current_monte_carlo_fig = mc_fig
